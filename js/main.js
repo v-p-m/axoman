@@ -1,4 +1,7 @@
 import * as THREE from "https://unpkg.com/three@0.165.0/build/three.module.js";
+import { FBXLoader } from "https://unpkg.com/three@0.165.0/examples/jsm/loaders/FBXLoader.js";
+
+const loader = new FBXLoader();
 
 const scene = new THREE.Scene();
 
@@ -53,13 +56,15 @@ scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 const projectiles = [];
 
 // Character
-const player = new THREE.Mesh(
-  new THREE.BoxGeometry(1, 2, 1),
-  new THREE.MeshLambertMaterial({ color: 0xff4444 }),
-);
+const player = new THREE.Group();
 
-player.position.y = 1;
 scene.add(player);
+
+loader.load("assets/SM_StaticJohn.fbx", (fbx) => {
+  fbx.scale.set(0.01, 0.01, 0.01);
+  fbx.rotation.x = -Math.PI / 2;
+  player.add(fbx);
+});
 
 // Input
 const keys = {};
@@ -93,6 +98,8 @@ window.addEventListener("mousedown", () => {
 });
 
 function updatePlayer(dt) {
+  if (!player) return;
+
   const speed = 5;
 
   if (keys["w"]) player.position.z -= speed * dt;
