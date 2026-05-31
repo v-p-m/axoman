@@ -5,29 +5,36 @@ const loader = new FBXLoader();
 
 const scene = new THREE.Scene();
 
-const mapSize = 40;
-const tileSize = 1;
-
-const grassMaterial = new THREE.MeshLambertMaterial({
-  color: 0x55aa55,
-});
-
-const tileGeometry = new THREE.BoxGeometry(tileSize, 0.2, tileSize);
-
-for (let x = 0; x < mapSize; x++) {
-  for (let z = 0; z < mapSize; z++) {
-    const tile = new THREE.Mesh(tileGeometry, grassMaterial);
-
-    tile.position.set(x - mapSize / 2, -0.1, z - mapSize / 2);
-
-    scene.add(tile);
-  }
-}
-
 // Renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
+
+// Ground
+const groundTexture = new THREE.TextureLoader().load(
+  "assets/imgp5487_seamless.jpg",
+);
+
+groundTexture.wrapS = THREE.RepeatWrapping;
+groundTexture.wrapT = THREE.RepeatWrapping;
+
+groundTexture.repeat.set(20, 20);
+
+groundTexture.colorSpace = THREE.SRGBColorSpace;
+groundTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+const groundMaterial = new THREE.MeshLambertMaterial({
+  map: groundTexture,
+});
+
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(200, 200),
+  groundMaterial,
+);
+
+ground.rotation.x = -Math.PI / 2;
+
+scene.add(ground);
 
 // Orthographic camera (axonometric)
 const aspect = window.innerWidth / window.innerHeight;
