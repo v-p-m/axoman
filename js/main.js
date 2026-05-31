@@ -63,13 +63,33 @@ scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 const projectiles = [];
 
 // Character
+
+const textureLoader = new THREE.TextureLoader();
+
+const skinTexture = textureLoader.load("assets/survivorMaleB.png");
+
+skinTexture.colorSpace = THREE.SRGBColorSpace;
+
 const player = new THREE.Group();
 
 scene.add(player);
 
-loader.load("assets/SM_StaticJohn.fbx", (fbx) => {
-  fbx.scale.set(0.01, 0.01, 0.01);
-  fbx.rotation.x = -Math.PI / 2;
+loader.load("assets/characterMedium.fbx", (fbx) => {
+  fbx.scale.set(0.005, 0.005, 0.005);
+  //fbx.rotation.x = -Math.PI / 2;
+  const box = new THREE.Box3().setFromObject(fbx);
+  const size = new THREE.Vector3();
+
+  box.getSize(size);
+
+  fbx.traverse((child) => {
+    if (child.isMesh) {
+      child.material = new THREE.MeshStandardMaterial({
+        map: skinTexture,
+      });
+    }
+  });
+
   player.add(fbx);
 });
 
