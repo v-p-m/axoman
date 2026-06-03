@@ -5,6 +5,7 @@ const scene = new THREE.Scene();
 let last = performance.now();
 let currentAction = null;
 let state = "Idle";
+let gameRunning = false;
 
 // Renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -139,6 +140,143 @@ sun.position.set(10, 20, 10);
 scene.add(sun);
 
 scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+// UI Overlay
+const style = document.createElement("style");
+style.textContent = `
+  @import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;700&display=swap');
+
+  #overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.72);
+    backdrop-filter: blur(3px);
+    z-index: 10;
+    font-family: 'Pixelify Sans', monospace;
+  }
+
+  #overlay h1 {
+    color: #fff;
+    font-size: clamp(2rem, 6vw, 4rem);
+    letter-spacing: 0.15em;
+    margin: 0 0 0.25em;
+    text-shadow: 0 0 30px #8844ff, 0 0 60px #8844ff88;
+  }
+
+  #overlay p {
+    color: #aaa;
+    font-size: clamp(0.75rem, 2vw, 1rem);
+    letter-spacing: 0.1em;
+    margin: 0 0 2.5em;
+  }
+
+  .ui-btn {
+    font-family: 'Pixelify Sans', monospace;
+    font-size: clamp(1rem, 2.5vw, 1.3rem);
+    letter-spacing: 0.2em;
+    padding: 0.65em 2.2em;
+    border: 2px solid #8844ff;
+    background: transparent;
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+    text-transform: uppercase;
+  }
+
+  .ui-btn:hover {
+    background: #8844ff;
+    box-shadow: 0 0 24px #8844ffaa;
+    transform: scale(1.04);
+  }
+
+  .ui-btn:active { transform: scale(0.97); }
+
+  #resetBtn {
+    position: fixed;
+    top: 18px;
+    right: 22px;
+    z-index: 9;
+    font-family: 'Pixelify Sans', monospace;
+    font-size: 0.85rem;
+    letter-spacing: 0.15em;
+    padding: 0.4em 1.1em;
+    border: 1.5px solid rgba(255,255,255,0.25);
+    background: rgba(0,0,0,0.45);
+    color: rgba(255,255,255,0.6);
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+  }
+
+  #resetBtn:hover {
+    border-color: #ff4444;
+    color: #ff4444;
+    background: rgba(255,68,68,0.1);
+  }
+`;
+document.head.appendChild(style);
+
+const overlay = document.createElement("div");
+overlay.id = "overlay";
+overlay.innerHTML = `
+  <h1>AXOMAN</h1>
+  <p>WASD to move &nbsp;·&nbsp; Mouse to aim &nbsp;·&nbsp; Click to shoot</p>
+  <button class="ui-btn" id="playBtn">▶ &nbsp;PLAY</button>
+`;
+document.body.appendChild(overlay);
+
+const resetBtn = document.createElement("button");
+resetBtn.id = "resetBtn";
+resetBtn.textContent = "↺  RESET";
+resetBtn.style.display = "none";
+document.body.appendChild(resetBtn);
+
+function startGame() {
+  gameRunning = true;
+  overlay.style.display = "none";
+  resetBtn.style.display = "block";
+  last = performance.now();
+}
+
+function resetGame() {
+  // Remove existing enemies
+  for (const enemy of enemies) {
+    scene.remove(enemy.group);
+    scene.remove(enemy.shadow);
+  }
+  enemies.length = 0;
+
+  // Remove projectiles
+  for (const p of projectiles) scene.remove(p.mesh);
+  projectiles.length = 0;
+
+  // Remove debris
+  for (const d of debrisPieces) scene.remove(d.mesh);
+  debrisPieces.length = 0;
+
+  // Reset player
+  player.position.set(0, 1, 0);
+  player.rotation.set(0, 0, 0);
+  walkTime = 0;
+  shadow.position.set(0, 0.01, 0);
+
+  // Spawn fresh enemies
+  enemies.push(createEnemy(5, -5));
+  enemies.push(createEnemy(-6, 4));
+  enemies.push(createEnemy(10, 8));
+
+  // Show overlay again
+  gameRunning = false;
+  resetBtn.style.display = "none";
+  overlay.style.display = "flex";
+}
+
+document.getElementById("playBtn").addEventListener("click", startGame);
+resetBtn.addEventListener("click", resetGame);
 // Projectile storage
 const projectiles = [];
 
@@ -165,6 +303,8 @@ window.addEventListener("mousemove", (event) => {
 });
 
 window.addEventListener("mousedown", () => {
+  if (!gameRunning) return;
+
   raycaster.setFromCamera(mouse, camera);
 
   const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -398,10 +538,12 @@ function animate(now) {
   const dt = (now - last) / 1000;
   last = now;
 
-  updatePlayer(dt);
-  updateProjectiles(dt);
-  updateEnemies(dt);
-  updateDebris(dt);
+  if (gameRunning) {
+    updatePlayer(dt);
+    updateProjectiles(dt);
+    updateEnemies(dt);
+    updateDebris(dt);
+  }
 
   camera.position.set(player.position.x + 15, 15, player.position.z + 15);
 
