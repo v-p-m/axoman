@@ -1,9 +1,10 @@
 import * as THREE from "https://unpkg.com/three@0.165.0/build/three.module.js";
-import { FBXLoader } from "https://unpkg.com/three@0.165.0/examples/jsm/loaders/FBXLoader.js";
-
-const loader = new FBXLoader();
 
 const scene = new THREE.Scene();
+
+let last = performance.now();
+let currentAction = null;
+let state = "Idle";
 
 // Renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -33,8 +34,87 @@ const ground = new THREE.Mesh(
 );
 
 ground.rotation.x = -Math.PI / 2;
-
 scene.add(ground);
+
+// Player
+const player = new THREE.Group();
+const material = new THREE.MeshLambertMaterial({
+  color: 0x8844ff,
+});
+const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 2, 0.5), material);
+
+let walkTime = 0;
+
+body.position.y = 1;
+
+const nose = new THREE.Mesh(
+  new THREE.BoxGeometry(0.2, 0.2, 0.2),
+  new THREE.MeshLambertMaterial({ color: 0xffff00 }),
+);
+
+nose.position.set(0, 1.5, 0.4);
+
+player.add(body);
+player.add(nose);
+
+const shadow = new THREE.Mesh(
+  new THREE.CircleGeometry(0.5, 16),
+  new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    transparent: true,
+    opacity: 0.25,
+  }),
+);
+
+shadow.rotation.x = -Math.PI / 2;
+shadow.position.y = 0.01;
+
+scene.add(shadow);
+scene.add(player);
+
+// Enemy
+function createEnemy(x, z) {
+  const group = new THREE.Group();
+
+  const enemyMaterial = new THREE.MeshLambertMaterial({ color: 0xff3333 });
+  const enemyBody = new THREE.Mesh(
+    new THREE.BoxGeometry(0.5, 2, 0.5),
+    enemyMaterial,
+  );
+  enemyBody.position.y = 1;
+
+  const enemyNose = new THREE.Mesh(
+    new THREE.BoxGeometry(0.2, 0.2, 0.2),
+    new THREE.MeshLambertMaterial({ color: 0xffff00 }),
+  );
+  enemyNose.position.set(0, 1.5, 0.4);
+
+  group.add(enemyBody);
+  group.add(enemyNose);
+  group.position.set(x, 1, z);
+
+  const enemyShadow = new THREE.Mesh(
+    new THREE.CircleGeometry(0.5, 16),
+    new THREE.MeshBasicMaterial({
+      color: 0x000000,
+      transparent: true,
+      opacity: 0.25,
+    }),
+  );
+  enemyShadow.rotation.x = -Math.PI / 2;
+  enemyShadow.position.set(x, 0.01, z);
+
+  scene.add(enemyShadow);
+  scene.add(group);
+
+  return { group, shadow: enemyShadow, walkTime: 0 };
+}
+
+const enemies = [
+  createEnemy(15, -15),
+  createEnemy(-20, 10),
+  createEnemy(25, 20),
+];
 
 // Orthographic camera (axonometric)
 const aspect = window.innerWidth / window.innerHeight;
@@ -55,43 +135,15 @@ camera.lookAt(0, 0, 0);
 // Light
 const sun = new THREE.DirectionalLight(0xffffff, 2);
 sun.position.set(10, 20, 10);
+
 scene.add(sun);
 
 scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-
 // Projectile storage
 const projectiles = [];
 
-// Character
-
-const textureLoader = new THREE.TextureLoader();
-
-const skinTexture = textureLoader.load("assets/survivorMaleB.png");
-
-skinTexture.colorSpace = THREE.SRGBColorSpace;
-
-const player = new THREE.Group();
-
-scene.add(player);
-
-loader.load("assets/characterMedium.fbx", (fbx) => {
-  fbx.scale.set(0.005, 0.005, 0.005);
-  //fbx.rotation.x = -Math.PI / 2;
-  const box = new THREE.Box3().setFromObject(fbx);
-  const size = new THREE.Vector3();
-
-  box.getSize(size);
-
-  fbx.traverse((child) => {
-    if (child.isMesh) {
-      child.material = new THREE.MeshStandardMaterial({
-        map: skinTexture,
-      });
-    }
-  });
-
-  player.add(fbx);
-});
+// Debris storage
+const debrisPieces = [];
 
 // Input
 const keys = {};
@@ -127,27 +179,87 @@ window.addEventListener("mousedown", () => {
 function updatePlayer(dt) {
   if (!player) return;
 
-  const speed = 5;
+  const speed = 7;
+  let moving = false;
 
-  if (keys["w"]) player.position.z -= speed * dt;
-  if (keys["s"]) player.position.z += speed * dt;
-  if (keys["a"]) player.position.x -= speed * dt;
-  if (keys["d"]) player.position.x += speed * dt;
+  if (keys["w"]) {
+    player.position.z -= speed * dt;
+    moving = true;
+  }
+  if (keys["s"]) {
+    player.position.z += speed * dt;
+    moving = true;
+  }
+  if (keys["a"]) {
+    player.position.x -= speed * dt;
+    moving = true;
+  }
+  if (keys["d"]) {
+    player.position.x += speed * dt;
+    moving = true;
+  }
+
+  if (moving) {
+    walkTime += dt * 10;
+
+    player.position.y = 1 + Math.abs(Math.sin(walkTime)) * 0.15;
+
+    player.rotation.z = Math.sin(walkTime) * 0.05;
+  } else {
+    player.position.y = 1;
+    player.rotation.z = 0;
+  }
+
+  shadow.position.set(player.position.x, 0.01, player.position.z);
 }
 
-let last = performance.now();
+function updateEnemies(dt) {
+  const speed = 2.5;
+
+  for (const enemy of enemies) {
+    const dir = new THREE.Vector3()
+      .subVectors(player.position, enemy.group.position)
+      .setY(0);
+
+    const dist = dir.length();
+
+    if (dist > 0.6) {
+      dir.normalize();
+      enemy.group.position.addScaledVector(dir, speed * dt);
+
+      enemy.walkTime += dt * 10;
+      enemy.group.position.y = 1 + Math.abs(Math.sin(enemy.walkTime)) * 0.15;
+      enemy.group.rotation.z = Math.sin(enemy.walkTime) * 0.05;
+    } else {
+      enemy.group.position.y = 1;
+      enemy.group.rotation.z = 0;
+    }
+
+    enemy.group.lookAt(
+      player.position.x,
+      enemy.group.position.y,
+      player.position.z,
+    );
+
+    enemy.shadow.position.set(
+      enemy.group.position.x,
+      0.01,
+      enemy.group.position.z,
+    );
+  }
+}
 
 function shoot(target) {
   const bullet = new THREE.Mesh(
     new THREE.SphereGeometry(0.15, 8, 8),
     new THREE.MeshLambertMaterial({
-      color: 0xffff00,
+      color: 0x000000,
     }),
   );
 
   bullet.position.copy(player.position);
 
-  bullet.position.y = 1;
+  bullet.position.y = 2;
 
   target.y = bullet.position.y;
 
@@ -163,6 +275,88 @@ function shoot(target) {
   scene.add(bullet);
 }
 
+function spawnDebris(position) {
+  const colors = [0xff3333, 0xff5555, 0xffff00, 0xff8800];
+  const count = 10 + Math.floor(Math.random() * 6);
+
+  for (let i = 0; i < count; i++) {
+    const size = 0.1 + Math.random() * 0.2;
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(size, size, size),
+      new THREE.MeshLambertMaterial({
+        color: colors[Math.floor(Math.random() * colors.length)],
+      }),
+    );
+
+    mesh.position.copy(position);
+    mesh.position.y = 0.5 + Math.random() * 1.5;
+
+    // Random outward velocity + upward arc
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 5;
+    const vy = 3 + Math.random() * 4;
+
+    const vx = Math.cos(angle) * speed;
+    const vz = Math.sin(angle) * speed;
+
+    mesh.rotation.set(
+      Math.random() * Math.PI,
+      Math.random() * Math.PI,
+      Math.random() * Math.PI,
+    );
+
+    scene.add(mesh);
+
+    debrisPieces.push({
+      mesh,
+      vx,
+      vy,
+      vz,
+      lifetime: 1.5 + Math.random() * 1.0,
+      age: 0,
+    });
+  }
+}
+
+function updateDebris(dt) {
+  const gravity = 12;
+
+  for (let i = debrisPieces.length - 1; i >= 0; i--) {
+    const d = debrisPieces[i];
+
+    d.age += dt;
+
+    d.vy -= gravity * dt;
+    d.mesh.position.x += d.vx * dt;
+    d.mesh.position.y += d.vy * dt;
+    d.mesh.position.z += d.vz * dt;
+
+    // Bounce & settle on ground
+    if (d.mesh.position.y < 0.05) {
+      d.mesh.position.y = 0.05;
+      d.vy *= -0.3;
+      d.vx *= 0.6;
+      d.vz *= 0.6;
+    }
+
+    // Tumble while airborne
+    d.mesh.rotation.x += d.vx * dt * 2;
+    d.mesh.rotation.z += d.vz * dt * 2;
+
+    // Fade out near end of life
+    if (d.age > d.lifetime * 0.6) {
+      const t = (d.age - d.lifetime * 0.6) / (d.lifetime * 0.4);
+      d.mesh.material.transparent = true;
+      d.mesh.material.opacity = 1 - t;
+    }
+
+    if (d.age >= d.lifetime) {
+      scene.remove(d.mesh);
+      debrisPieces.splice(i, 1);
+    }
+  }
+}
+
 function updateProjectiles(dt) {
   const speed = 30;
 
@@ -171,7 +365,27 @@ function updateProjectiles(dt) {
 
     p.mesh.position.addScaledVector(p.direction, speed * dt);
 
-    if (p.mesh.position.distanceTo(player.position) > 50) {
+    // Hit detection against enemies
+    let hit = false;
+    for (let j = enemies.length - 1; j >= 0; j--) {
+      const enemy = enemies[j];
+      const dx = p.mesh.position.x - enemy.group.position.x;
+      const dz = p.mesh.position.z - enemy.group.position.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+
+      if (dist < 0.8) {
+        spawnDebris(enemy.group.position);
+
+        scene.remove(enemy.group);
+        scene.remove(enemy.shadow);
+        enemies.splice(j, 1);
+
+        hit = true;
+        break;
+      }
+    }
+
+    if (hit || p.mesh.position.distanceTo(player.position) > 50) {
       scene.remove(p.mesh);
       projectiles.splice(i, 1);
     }
@@ -186,6 +400,8 @@ function animate(now) {
 
   updatePlayer(dt);
   updateProjectiles(dt);
+  updateEnemies(dt);
+  updateDebris(dt);
 
   camera.position.set(player.position.x + 15, 15, player.position.z + 15);
 
