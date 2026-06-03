@@ -118,13 +118,13 @@ const enemies = [
 
 // Orthographic camera (axonometric)
 const aspect = window.innerWidth / window.innerHeight;
-const frustumSize = 20;
+const frustumSize = 30;
 
 const camera = new THREE.OrthographicCamera(
-  (frustumSize * aspect) / -2,
-  (frustumSize * aspect) / 2,
-  frustumSize / 2,
   frustumSize / -2,
+  frustumSize / 2,
+  frustumSize / aspect / 2,
+  frustumSize / aspect / -2,
   0.1,
   1000,
 );
@@ -425,10 +425,10 @@ animate(performance.now());
 window.addEventListener("resize", () => {
   const aspect = window.innerWidth / window.innerHeight;
 
-  camera.left = (-frustumSize * aspect) / 2;
-  camera.right = (frustumSize * aspect) / 2;
-  camera.top = frustumSize / 2;
-  camera.bottom = -frustumSize / 2;
+  camera.left = frustumSize / -2;
+  camera.right = frustumSize / 2;
+  camera.top = frustumSize / aspect / 2;
+  camera.bottom = frustumSize / aspect / -2;
 
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
