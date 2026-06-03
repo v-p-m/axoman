@@ -4,7 +4,6 @@ const scene = new THREE.Scene();
 
 let last = performance.now();
 let currentAction = null;
-let state = "Idle";
 let gameRunning = false;
 
 // Renderer
@@ -219,6 +218,65 @@ style.textContent = `
     color: #ff4444;
     background: rgba(255,68,68,0.1);
   }
+  #diedScreen {
+    position: fixed;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.0);
+    z-index: 11;
+    font-family: 'Pixelify Sans', monospace;
+    pointer-events: none;
+    transition: background 0.4s;
+  }
+
+  #diedScreen.visible {
+    background: rgba(80, 0, 0, 0.65);
+    backdrop-filter: blur(2px);
+    pointer-events: all;
+  }
+
+  #diedScreen h2 {
+    color: #ff2222;
+    font-size: clamp(2.5rem, 8vw, 5rem);
+    letter-spacing: 0.2em;
+    margin: 0 0 0.2em;
+    text-shadow: 0 0 40px #ff0000, 0 0 80px #ff000066;
+    opacity: 0;
+    transform: scale(0.6);
+    transition: opacity 0.35s 0.1s, transform 0.35s 0.1s;
+  }
+
+  #diedScreen.visible h2 {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  #diedScreen p {
+    color: #ffaaaa;
+    font-size: clamp(0.8rem, 2vw, 1.1rem);
+    letter-spacing: 0.12em;
+    margin: 0 0 2em;
+    opacity: 0;
+    transition: opacity 0.3s 0.35s;
+  }
+
+  #diedScreen.visible p { opacity: 1; }
+
+  #diedScreen .ui-btn {
+    border-color: #ff4444;
+    opacity: 0;
+    transition: opacity 0.3s 0.5s, background 0.15s, box-shadow 0.15s, transform 0.1s;
+  }
+
+  #diedScreen.visible .ui-btn { opacity: 1; }
+
+  #diedScreen .ui-btn:hover {
+    background: #ff4444;
+    box-shadow: 0 0 24px #ff4444aa;
+  }
 `;
 document.head.appendChild(style);
 
@@ -230,6 +288,15 @@ overlay.innerHTML = `
   <button class="ui-btn" id="playBtn">▶ &nbsp;PLAY</button>
 `;
 document.body.appendChild(overlay);
+
+const diedScreen = document.createElement("div");
+diedScreen.id = "diedScreen";
+diedScreen.innerHTML = `
+  <h2>YOU DIED</h2>
+  <p>An enemy got too close...</p>
+  <button class="ui-btn" id="diedResetBtn">↺ &nbsp;TRY AGAIN</button>
+`;
+document.body.appendChild(diedScreen);
 
 const resetBtn = document.createElement("button");
 resetBtn.id = "resetBtn";
@@ -244,7 +311,31 @@ function startGame() {
   last = performance.now();
 }
 
+function killPlayer() {
+  if (!gameRunning) return;
+  gameRunning = false;
+
+  // Explode player into purple/yellow debris
+  spawnDebris(player.position, [0x8844ff, 0xaa66ff, 0xffff00, 0xcc88ff]);
+
+  // Hide the player and its shadow
+  player.visible = false;
+  shadow.visible = false;
+
+  resetBtn.style.display = "none";
+
+  // Show YOU DIED screen
+  setTimeout(() => {
+    diedScreen.style.display = "flex";
+    requestAnimationFrame(() => diedScreen.classList.add("visible"));
+  }, 800); // adjust to match debris duration
+}
+
 function resetGame() {
+  // Hide died screen
+  diedScreen.classList.remove("visible");
+  diedScreen.style.display = "none";
+
   // Remove existing enemies
   for (const enemy of enemies) {
     scene.remove(enemy.group);
@@ -261,6 +352,8 @@ function resetGame() {
   debrisPieces.length = 0;
 
   // Reset player
+  player.visible = true;
+  shadow.visible = true;
   player.position.set(0, 1, 0);
   player.rotation.set(0, 0, 0);
   walkTime = 0;
@@ -277,6 +370,8 @@ function resetGame() {
 
 document.getElementById("playBtn").addEventListener("click", startGame);
 resetBtn.addEventListener("click", resetGame);
+document.getElementById("diedResetBtn").addEventListener("click", resetGame);
+
 // Projectile storage
 const projectiles = [];
 
@@ -363,6 +458,11 @@ function updateEnemies(dt) {
 
     const dist = dir.length();
 
+    if (dist < 0.8) {
+      killPlayer();
+      return;
+    }
+
     if (dist > 0.6) {
       dir.normalize();
       enemy.group.position.addScaledVector(dir, speed * dt);
@@ -391,7 +491,7 @@ function updateEnemies(dt) {
 
 function shoot(target) {
   const bullet = new THREE.Mesh(
-    new THREE.SphereGeometry(0.15, 8, 8),
+    new THREE.SphereGeometry(0.08, 8, 8),
     new THREE.MeshLambertMaterial({
       color: 0x000000,
     }),
@@ -415,8 +515,8 @@ function shoot(target) {
   scene.add(bullet);
 }
 
-function spawnDebris(position) {
-  const colors = [0xff3333, 0xff5555, 0xffff00, 0xff8800];
+function spawnDebris(position, colors) {
+  colors = colors || [0xff3333, 0xff5555, 0xffff00, 0xff8800];
   const count = 10 + Math.floor(Math.random() * 6);
 
   for (let i = 0; i < count; i++) {
