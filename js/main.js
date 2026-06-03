@@ -111,11 +111,13 @@ function createEnemy(x, z) {
   return { group, shadow: enemyShadow, walkTime: 0 };
 }
 
-const enemies = [
-  createEnemy(15, -15),
-  createEnemy(-20, 10),
-  createEnemy(25, 20),
+const enemySpawns = [
+  [15, -15],
+  [-20, 10],
+  [25, 20],
 ];
+
+const enemies = enemySpawns.map(([x, z]) => createEnemy(x, z));
 
 // Orthographic camera (axonometric)
 const aspect = window.innerWidth / window.innerHeight;
@@ -265,9 +267,7 @@ function resetGame() {
   shadow.position.set(0, 0.01, 0);
 
   // Spawn fresh enemies
-  enemies.push(createEnemy(5, -5));
-  enemies.push(createEnemy(-6, 4));
-  enemies.push(createEnemy(10, 8));
+  enemySpawns.forEach(([x, z]) => enemies.push(createEnemy(x, z)));
 
   // Show overlay again
   gameRunning = false;
