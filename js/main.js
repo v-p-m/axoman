@@ -507,6 +507,12 @@ function updatePlayer(dt) {
   }
 
   shadow.position.set(player.position.x, 0.01, player.position.z);
+
+  const snapInterval = 10;
+  ground.position.x =
+    Math.round(player.position.x / snapInterval) * snapInterval;
+  ground.position.z =
+    Math.round(player.position.z / snapInterval) * snapInterval;
 }
 
 function updateEnemies(dt) {
