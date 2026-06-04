@@ -110,6 +110,16 @@ function createEnemy(x, z) {
   return { group, shadow: enemyShadow, walkTime: 0 };
 }
 
+function spawnEnemy() {
+  const angle = Math.random() * Math.PI * 2;
+  const distance = 15 + Math.random() * 10; // 15–25 units away
+
+  const x = player.position.x + Math.cos(angle) * distance;
+  const z = player.position.z + Math.sin(angle) * distance;
+
+  enemies.push(createEnemy(x, z));
+}
+
 const enemySpawns = [
   [15, -15],
   [-20, 10],
@@ -313,22 +323,19 @@ function startGame() {
 
 function killPlayer() {
   if (!gameRunning) return;
-  gameRunning = false;
+  gameRunning = false; // ← stops the game loop AND prevents re-entry immediately
 
-  // Explode player into purple/yellow debris
   spawnDebris(player.position, [0x8844ff, 0xaa66ff, 0xffff00, 0xcc88ff]);
 
-  // Hide the player and its shadow
   player.visible = false;
   shadow.visible = false;
-
   resetBtn.style.display = "none";
 
-  // Show YOU DIED screen
+  // Debris keeps animating because updateDebris still runs outside the gameRunning gate
   setTimeout(() => {
     diedScreen.style.display = "flex";
     requestAnimationFrame(() => diedScreen.classList.add("visible"));
-  }, 800); // adjust to match debris duration
+  }, 1000);
 }
 
 function resetGame() {
@@ -412,33 +419,22 @@ window.addEventListener("mousedown", () => {
 });
 
 function updatePlayer(dt) {
-  if (!player) return;
+  const speed = 10;
+  const dir = new THREE.Vector3();
 
-  const speed = 7;
-  let moving = false;
+  if (keys["w"]) dir.z -= 1;
+  if (keys["s"]) dir.z += 1;
+  if (keys["a"]) dir.x -= 1;
+  if (keys["d"]) dir.x += 1;
 
-  if (keys["w"]) {
-    player.position.z -= speed * dt;
-    moving = true;
-  }
-  if (keys["s"]) {
-    player.position.z += speed * dt;
-    moving = true;
-  }
-  if (keys["a"]) {
-    player.position.x -= speed * dt;
-    moving = true;
-  }
-  if (keys["d"]) {
-    player.position.x += speed * dt;
-    moving = true;
-  }
+  const moving = dir.lengthSq() > 0;
 
   if (moving) {
+    dir.normalize(); // ← makes diagonal the same length as cardinal
+    player.position.addScaledVector(dir, speed * dt);
+
     walkTime += dt * 10;
-
     player.position.y = 1 + Math.abs(Math.sin(walkTime)) * 0.15;
-
     player.rotation.z = Math.sin(walkTime) * 0.05;
   } else {
     player.position.y = 1;
@@ -615,10 +611,11 @@ function updateProjectiles(dt) {
 
       if (dist < 0.8) {
         spawnDebris(enemy.group.position);
-
         scene.remove(enemy.group);
         scene.remove(enemy.shadow);
         enemies.splice(j, 1);
+
+        spawnEnemy();
 
         hit = true;
         break;
@@ -642,8 +639,9 @@ function animate(now) {
     updatePlayer(dt);
     updateProjectiles(dt);
     updateEnemies(dt);
-    updateDebris(dt);
   }
+
+  updateDebris(dt);
 
   camera.position.set(player.position.x + 15, 15, player.position.z + 15);
 
