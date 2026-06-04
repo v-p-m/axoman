@@ -44,6 +44,7 @@ const material = new THREE.MeshLambertMaterial({
 const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 2, 0.5), material);
 
 let walkTime = 0;
+let playerHealth = 100;
 
 body.position.y = 1;
 
@@ -287,6 +288,36 @@ style.textContent = `
     background: #ff4444;
     box-shadow: 0 0 24px #ff4444aa;
   }
+  #healthBar {
+    position: fixed;
+    bottom: 24px;
+    left: 24px;
+    z-index: 9;
+    font-family: 'Pixelify Sans', monospace;
+    color: #fff;
+    font-size: 0.85rem;
+    letter-spacing: 0.1em;
+  }
+
+  #healthBar label {
+    display: block;
+    margin-bottom: 5px;
+    color: #aaa;
+  }
+
+  #healthBarOuter {
+    width: 160px;
+    height: 14px;
+    background: rgba(0,0,0,0.5);
+    border: 1.5px solid rgba(255,255,255,0.2);
+  }
+
+  #healthBarInner {
+    height: 100%;
+    width: 100%;
+    background: #44ff88;
+    transition: width 0.2s, background 0.3s;
+  }
 `;
 document.head.appendChild(style);
 
@@ -308,6 +339,18 @@ diedScreen.innerHTML = `
 `;
 document.body.appendChild(diedScreen);
 
+const healthBarEl = document.createElement("div");
+healthBarEl.id = "healthBar";
+healthBarEl.innerHTML = `
+  <label>HEALTH</label>
+  <div id="healthBarOuter">
+    <div id="healthBarInner"></div>
+  </div>
+`;
+healthBarEl.style.display = "none";
+document.body.appendChild(healthBarEl);
+const healthBarInner = document.getElementById("healthBarInner");
+
 const resetBtn = document.createElement("button");
 resetBtn.id = "resetBtn";
 resetBtn.textContent = "↺  RESET";
@@ -318,7 +361,14 @@ function startGame() {
   gameRunning = true;
   overlay.style.display = "none";
   resetBtn.style.display = "block";
+  healthBarEl.style.display = "block";
   last = performance.now();
+}
+
+function damagePlayer(amount) {
+  playerHealth = Math.max(0, playerHealth - amount);
+  updateHealthBar();
+  if (playerHealth <= 0) killPlayer();
 }
 
 function killPlayer() {
@@ -373,6 +423,11 @@ function resetGame() {
   gameRunning = false;
   resetBtn.style.display = "none";
   overlay.style.display = "flex";
+
+  // Player health
+  playerHealth = 100;
+  updateHealthBar();
+  healthBarEl.style.display = "none";
 }
 
 document.getElementById("playBtn").addEventListener("click", startGame);
@@ -418,6 +473,14 @@ window.addEventListener("mousedown", () => {
   }
 });
 
+function updateHealthBar() {
+  healthBarInner.style.width = playerHealth + "%";
+  // Green → yellow → red based on health
+  const r = Math.round(255 * (1 - playerHealth / 100));
+  const g = Math.round(255 * (playerHealth / 100));
+  healthBarInner.style.background = `rgb(${r}, ${g}, 68)`;
+}
+
 function updatePlayer(dt) {
   const speed = 10;
   const dir = new THREE.Vector3();
@@ -447,7 +510,8 @@ function updatePlayer(dt) {
 function updateEnemies(dt) {
   const speed = 2.5;
 
-  for (const enemy of enemies) {
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const enemy = enemies[i];
     const dir = new THREE.Vector3()
       .subVectors(player.position, enemy.group.position)
       .setY(0);
@@ -455,8 +519,13 @@ function updateEnemies(dt) {
     const dist = dir.length();
 
     if (dist < 0.8) {
-      killPlayer();
-      return;
+      damagePlayer(25);
+      spawnDebris(enemy.group.position);
+      scene.remove(enemy.group);
+      scene.remove(enemy.shadow);
+      enemies.splice(i, 1);
+      spawnEnemy();
+      continue; // ← not return, so other enemies keep updating
     }
 
     if (dist > 0.6) {
