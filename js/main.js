@@ -334,7 +334,7 @@ const diedScreen = document.createElement("div");
 diedScreen.id = "diedScreen";
 diedScreen.innerHTML = `
   <h2>YOU DIED</h2>
-  <p>An enemy got too close...</p>
+  <p>You succumbed to your injuries.</p>
   <button class="ui-btn" id="diedResetBtn">↺ &nbsp;TRY AGAIN</button>
 `;
 document.body.appendChild(diedScreen);
@@ -485,23 +485,25 @@ function updatePlayer(dt) {
   const speed = 10;
   const dir = new THREE.Vector3();
 
-  if (keys["w"]) dir.z -= 1;
-  if (keys["s"]) dir.z += 1;
-  if (keys["a"]) dir.x -= 1;
-  if (keys["d"]) dir.x += 1;
+  // Isometric screen axes — tune the angle to match your camera yaw (typically 45°)
+  const isoAngle = Math.PI / 4; // 45 degrees
+  const forward = new THREE.Vector3(
+    -Math.sin(isoAngle),
+    0,
+    -Math.cos(isoAngle),
+  );
+  const right = new THREE.Vector3(Math.cos(isoAngle), 0, -Math.sin(isoAngle));
 
-  const moving = dir.lengthSq() > 0;
+  if (keys["w"]) dir.add(forward);
+  if (keys["s"]) dir.sub(forward);
+  if (keys["d"]) dir.add(right);
+  if (keys["a"]) dir.sub(right);
 
-  if (moving) {
-    dir.normalize(); // ← makes diagonal the same length as cardinal
+  if (dir.lengthSq() > 0) {
+    dir.normalize();
     player.position.addScaledVector(dir, speed * dt);
-
     walkTime += dt * 10;
     player.position.y = 1 + Math.abs(Math.sin(walkTime)) * 0.15;
-    player.rotation.z = Math.sin(walkTime) * 0.05;
-  } else {
-    player.position.y = 1;
-    player.rotation.z = 0;
   }
 
   shadow.position.set(player.position.x, 0.01, player.position.z);
