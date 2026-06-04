@@ -108,7 +108,12 @@ function createEnemy(x, z) {
   scene.add(enemyShadow);
   scene.add(group);
 
-  return { group, shadow: enemyShadow, walkTime: 0 };
+  return {
+    group,
+    shadow: enemyShadow,
+    walkTime: 0,
+    grenadeCooldown: 4 + Math.random() * 3,
+  };
 }
 
 function spawnEnemy() {
@@ -339,6 +344,10 @@ diedScreen.innerHTML = `
 `;
 document.body.appendChild(diedScreen);
 
+const explosionFlashEl = document.createElement("div");
+explosionFlashEl.id = "explosionFlash";
+document.body.appendChild(explosionFlashEl);
+
 const healthBarEl = document.createElement("div");
 healthBarEl.id = "healthBar";
 healthBarEl.innerHTML = `
@@ -439,6 +448,34 @@ const projectiles = [];
 
 // Debris storage
 const debrisPieces = [];
+
+// Grenade storage
+const grenades = [];
+
+function flashExplosion() {
+  explosionFlashEl.classList.add("flash");
+  setTimeout(() => explosionFlashEl.classList.remove("flash"), 120);
+}
+
+function explodeGrenade(grenade) {
+  const pos = grenade.mesh.position.clone();
+
+  // Damage based on distance
+  const dist = pos.distanceTo(player.position);
+  const blastRadius = 5;
+  if (dist < blastRadius) {
+    const damage = Math.round(35 * (1 - dist / blastRadius));
+    damagePlayer(damage);
+    flashExplosion();
+  }
+
+  // Big debris burst
+  spawnDebris(pos, [0xff8800, 0xffcc00, 0xff4400, 0xffffff, 0x888888]);
+
+  // Remove grenade mesh + warning ring
+  scene.remove(grenade.mesh);
+  scene.remove(grenade.ring);
+}
 
 // Input
 const keys = {};
@@ -553,6 +590,13 @@ function updateEnemies(dt) {
       enemy.group.position.y,
       player.position.z,
     );
+
+    // Grenade throw: only from medium range (5–20 units), on cooldown
+    enemy.grenadeCooldown -= dt;
+    if (enemy.grenadeCooldown <= 0 && dist > 5 && dist < 20) {
+      throwGrenade(enemy.group.position.clone(), player.position.clone());
+      enemy.grenadeCooldown = 6 + Math.random() * 4; // 6–10s cooldown
+    }
 
     enemy.shadow.position.set(
       enemy.group.position.x,
@@ -706,6 +750,92 @@ function updateProjectiles(dt) {
   }
 }
 
+function throwGrenade(fromPosition, toPosition) {
+  // Grenade mesh — small dark olive sphere
+  const grenadeMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.18, 8, 8),
+    new THREE.MeshLambertMaterial({ color: 0x556b2f }),
+  );
+  grenadeMesh.position.copy(fromPosition);
+  grenadeMesh.position.y = 1.5;
+  scene.add(grenadeMesh);
+
+  // Warning ring on the ground at the target
+  const ringGeo = new THREE.RingGeometry(0.1, 5, 32);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: 0xff4400,
+    transparent: true,
+    opacity: 0.35,
+    side: THREE.DoubleSide,
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.set(toPosition.x, 0.02, toPosition.z);
+  scene.add(ring);
+
+  // Arc physics: compute velocity to land on target
+  const fuseTime = 2.0; // seconds until boom
+  const gravity = 18;
+  const dx = toPosition.x - fromPosition.x;
+  const dz = toPosition.z - fromPosition.z;
+  const vy = (gravity * fuseTime) / 2; // peak arc height
+  const vx = dx / fuseTime;
+  const vz = dz / fuseTime;
+
+  grenades.push({
+    mesh: grenadeMesh,
+    ring,
+    vx,
+    vy,
+    vz,
+    gravity,
+    age: 0,
+    fuseTime,
+    bounced: false,
+  });
+}
+
+function updateGrenades(dt) {
+  for (let i = grenades.length - 1; i >= 0; i--) {
+    const g = grenades[i];
+    g.age += dt;
+
+    // Physics
+    g.vy -= g.gravity * dt;
+    g.mesh.position.x += g.vx * dt;
+    g.mesh.position.y += g.vy * dt;
+    g.mesh.position.z += g.vz * dt;
+
+    // Tumble
+    g.mesh.rotation.x += dt * 5;
+    g.mesh.rotation.z += dt * 3;
+
+    // Bounce once off the floor
+    if (!g.bounced && g.mesh.position.y < 0.2) {
+      g.mesh.position.y = 0.2;
+      g.vy = Math.abs(g.vy) * 0.3;
+      g.vx *= 0.5;
+      g.vz *= 0.5;
+      g.bounced = true;
+    }
+
+    // Pulse the warning ring as fuse runs out
+    const fuseRatio = g.age / g.fuseTime;
+    const pulse =
+      0.2 + 0.3 * Math.abs(Math.sin(fuseRatio * Math.PI * (4 + fuseRatio * 6)));
+    g.ring.material.opacity = pulse;
+    // Shrink ring toward impact point to hint at explosion
+    const scale = 0.4 + 0.6 * (1 - fuseRatio);
+    g.ring.scale.set(scale, scale, scale);
+
+    // BOOM
+    if (g.age >= g.fuseTime) {
+      explodeGrenade(g);
+      grenades.splice(i, 1);
+    }
+  }
+}
+
 function animate(now) {
   requestAnimationFrame(animate);
 
@@ -716,6 +846,7 @@ function animate(now) {
     updatePlayer(dt);
     updateProjectiles(dt);
     updateEnemies(dt);
+    updateGrenades(dt);
   }
 
   updateDebris(dt);
