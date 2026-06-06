@@ -44,7 +44,10 @@ const material = new THREE.MeshLambertMaterial({
 const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 2, 0.5), material);
 
 let walkTime = 0;
+let playerVY = 0;
+let isOnGround = true;
 let playerHealth = 100;
+let killCount = 0;
 
 body.position.y = 1;
 
@@ -323,6 +326,16 @@ style.textContent = `
     background: #44ff88;
     transition: width 0.2s, background 0.3s;
   }
+  #killCounter {
+    position: fixed;
+    bottom: 70px;
+    left: 24px;
+    z-index: 9;
+    font-family: 'Pixelify Sans', monospace;
+    color: #ff4444;
+    font-size: 0.85rem;
+    letter-spacing: 0.1em;
+  }
 `;
 document.head.appendChild(style);
 
@@ -330,7 +343,7 @@ const overlay = document.createElement("div");
 overlay.id = "overlay";
 overlay.innerHTML = `
   <h1>AXOMAN</h1>
-  <p>WASD to move &nbsp;·&nbsp; Mouse to aim &nbsp;·&nbsp; Click to shoot</p>
+  <p>WASD to move &nbsp;·&nbsp; Mouse to aim &nbsp;·&nbsp; Click to shoot &nbsp;·&nbsp; Space to jump</p>
   <button class="ui-btn" id="playBtn">▶ &nbsp;PLAY</button>
 `;
 document.body.appendChild(overlay);
@@ -360,6 +373,11 @@ healthBarEl.style.display = "none";
 document.body.appendChild(healthBarEl);
 const healthBarInner = document.getElementById("healthBarInner");
 
+const killCounterEl = document.createElement("div");
+killCounterEl.id = "killCounter";
+killCounterEl.style.display = "none";
+document.body.appendChild(killCounterEl);
+
 const resetBtn = document.createElement("button");
 resetBtn.id = "resetBtn";
 resetBtn.textContent = "↺  RESET";
@@ -371,6 +389,7 @@ function startGame() {
   overlay.style.display = "none";
   resetBtn.style.display = "block";
   healthBarEl.style.display = "block";
+  killCounterEl.style.display = "block";
   last = performance.now();
 }
 
@@ -389,6 +408,7 @@ function killPlayer() {
   player.visible = false;
   shadow.visible = false;
   resetBtn.style.display = "none";
+  killCounterEl.style.display = "none";
 
   // Debris keeps animating because updateDebris still runs outside the gameRunning gate
   setTimeout(() => {
@@ -424,6 +444,8 @@ function resetGame() {
   player.rotation.set(0, 0, 0);
   walkTime = 0;
   shadow.position.set(0, 0.01, 0);
+  killCount = 0;
+  updateKillCounter();
 
   // Spawn fresh enemies
   enemySpawns.forEach(([x, z]) => enemies.push(createEnemy(x, z)));
@@ -518,6 +540,10 @@ function updateHealthBar() {
   healthBarInner.style.background = `rgb(${r}, ${g}, 68)`;
 }
 
+function updateKillCounter() {
+  killCounterEl.textContent = "KILLS: " + killCount;
+}
+
 function updatePlayer(dt) {
   const speed = 10;
   const dir = new THREE.Vector3();
@@ -540,7 +566,23 @@ function updatePlayer(dt) {
     dir.normalize();
     player.position.addScaledVector(dir, speed * dt);
     walkTime += dt * 10;
-    player.position.y = 1 + Math.abs(Math.sin(walkTime)) * 0.15;
+    if (isOnGround) player.position.y = 1 + Math.abs(Math.sin(walkTime)) * 0.15;
+  }
+
+  // Jump
+  if (keys[" "] && isOnGround) {
+    playerVY = 8;
+    isOnGround = false;
+  }
+
+  if (!isOnGround) {
+    playerVY -= 20 * dt; // gravity
+    player.position.y += playerVY * dt;
+    if (player.position.y <= 1) {
+      player.position.y = 1;
+      isOnGround = true;
+      playerVY = 0;
+    }
   }
 
   shadow.position.set(player.position.x, 0.01, player.position.z);
@@ -569,6 +611,8 @@ function updateEnemies(dt) {
       scene.remove(enemy.group);
       scene.remove(enemy.shadow);
       enemies.splice(i, 1);
+      killCount++;
+      updateKillCounter();
       spawnEnemy();
       continue; // ← not return, so other enemies keep updating
     }
@@ -735,7 +779,8 @@ function updateProjectiles(dt) {
         scene.remove(enemy.group);
         scene.remove(enemy.shadow);
         enemies.splice(j, 1);
-
+        killCount++;
+        updateKillCounter();
         spawnEnemy();
 
         hit = true;
